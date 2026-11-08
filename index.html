@@ -4,8 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Firefox (WebAssembly)</title>
+<script>
+/* coi-sw.js (next to this file) adds the security headers Firefox-in-WebAssembly needs,
+   so Firefox can run inside this page. Without coi-sw.js this step is skipped. */
+(() => {
+  if (window.crossOriginIsolated || !window.isSecureContext || !navigator.serviceWorker) return;
+  navigator.serviceWorker.register("coi-sw.js").then(reg => {
+    if (navigator.serviceWorker.controller) return; // helper is running but isolation still failed: give up quietly
+    const reload = () => { if (!sessionStorage.getItem("coi-reloaded")) { sessionStorage.setItem("coi-reloaded", "1"); location.reload(); } };
+    navigator.serviceWorker.addEventListener("controllerchange", reload);
+    if (reg.active) reload();
+  }).catch(() => {});
+})();
+</script>
 <style>
-  :root { --bg:#14111f; --card:#1f1a30; --fg:#f4f2fb; --dim:#b3abc9; --or:#ff7139; --pu:#7542e5; }
+  :root { --bg:#14111f; --card:#1f1a30; --fg:#f4f2fb; --dim:#b3abc9; --or:#ff7139; }
   * { box-sizing:border-box; }
   html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, "Segoe UI", Roboto, sans-serif; }
   body { display:grid; place-items:center; padding:16px;
@@ -20,9 +33,14 @@
   .go:hover { filter:brightness(1.08); }
   .alt { background:rgba(255,255,255,.08); color:var(--fg); }
   .alt:hover { background:rgba(255,255,255,.14); }
+  .status { display:inline-block; font-size:12.5px; padding:4px 10px; border-radius:999px; margin-bottom:6px; }
+  .status.ok { background:rgba(61,220,132,.15); color:#7dffb0; }
+  .status.no { background:rgba(255,255,255,.08); color:var(--dim); }
   small { display:block; color:var(--dim); font-size:12.5px; line-height:1.6; margin-top:14px; }
   #frame { position:fixed; inset:0; width:100vw; height:100vh; border:0; display:none; background:#000; }
-  body.embedded .card { display:none; } body.embedded #frame { display:block; }
+  #back { position:fixed; top:8px; right:8px; z-index:2; display:none; width:32px; height:32px; padding:0; border-radius:50%;
+    background:rgba(0,0,0,.6); color:#fff; border:1px solid rgba(255,255,255,.3); font-size:16px; line-height:30px; }
+  body.embedded .card { display:none; } body.embedded #frame, body.embedded #back { display:block; }
 </style>
 </head>
 <body>
@@ -36,6 +54,7 @@
     <path d="M38 9c3 4 5 9 5 15A19 19 0 0 1 5.3 28C6 36 13 42.5 22 42.6 32 42.7 40 35 40 25c0-5-2-9-5-11 1 3 1 6-1 9-2 4-7 6-11 4 4-1 6-4 5-7-1-2-4-3-6-1 0-5 4-8 8-8-4-2-8-1-11 1 3-4 7-6 12-6 3 0 5 1 7 3z" fill="url(#g2)"/>
   </svg>
   <h1>Firefox (WebAssembly)</h1>
+  <div id="status" class="status no">Checking…</div>
   <p>The real Firefox browser engine, compiled to WebAssembly, running inside your browser — Chrome, Edge, Brave and Chromebooks.</p>
   <div class="btns">
     <button class="go" id="go">Launch Firefox</button>
@@ -47,19 +66,31 @@
     Firefox WebAssembly is an experimental demo by Puter (developer.puter.com), not an official Mozilla release.
   </small>
 </div>
+<button id="back" title="Close Firefox">✕</button>
 <iframe id="frame" title="Firefox" credentialless allow="cross-origin-isolated; fullscreen; clipboard-read; clipboard-write; autoplay; microphone; camera"></iframe>
 <script>
   "use strict";
   const FIREFOX_URL = "https://developer.puter.com/labs/firefox-wasm/";
-  // If this page is cross-origin isolated (only possible when the host sends the right headers),
-  // Firefox can run right inside it. GitHub Pages can't send them, so there it opens Firefox directly.
+  const here = () => window.crossOriginIsolated;   // true once coi-sw.js is working
+  const status = document.getElementById("status");
+  const showStatus = () => {
+    status.className = "status " + (here() ? "ok" : "no");
+    status.textContent = here() ? "✓ Firefox runs right here on this page" : "Opens on the Puter site (coi-sw.js not active)";
+  };
+  showStatus();
   const launch = () => {
-    if (window.crossOriginIsolated) {
+    if (here()) {
       const f = document.getElementById("frame");
-      f.src = FIREFOX_URL; document.body.classList.add("embedded"); document.title = "Firefox";
+      if (!f.src) f.src = FIREFOX_URL;
+      document.body.classList.add("embedded"); document.title = "Firefox";
     } else {
       location.href = FIREFOX_URL;   // same tab: never blocked by pop-up blockers
     }
+  };
+  const close = () => {
+    const f = document.getElementById("frame");
+    f.removeAttribute("src"); f.src = "about:blank"; f.removeAttribute("src");
+    document.body.classList.remove("embedded"); document.title = "Firefox (WebAssembly)";
   };
   const openWindow = () => {
     const w = window.open(FIREFOX_URL, "firefox-wasm", `popup=yes,width=${Math.round(screen.availWidth * .9)},height=${Math.round(screen.availHeight * .9)},left=${Math.round(screen.availWidth * .05)},top=${Math.round(screen.availHeight * .03)}`);
@@ -67,6 +98,7 @@
   };
   document.getElementById("go").onclick = launch;
   document.getElementById("win").onclick = openWindow;
+  document.getElementById("back").onclick = () => { if (confirm("Close Firefox?")) close(); };
   addEventListener("keydown", e => { if (e.key === "Enter" && !document.body.classList.contains("embedded")) launch(); });
 </script>
 </body>
